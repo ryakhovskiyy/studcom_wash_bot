@@ -20,7 +20,7 @@ from handlers.user import registration, booking, history
 from utils.states import *
 
 
-# --- Команды бота для меню ---
+# Команды бота для меню
 async def set_bot_commands():
     """Устанавливает команды, видимые в меню Telegram."""
     commands = [
