@@ -1,6 +1,8 @@
 import os
 import logging
 from telegram.ext import Application, PicklePersistence
+
+from core.logging_config import setup_logging
 from services.google_sheets import SheetManager
 from dotenv import load_dotenv
 
@@ -8,9 +10,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 # Настраиваем логирование
-logging.basicConfig(
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO
-)
+setup_logging()
 logger = logging.getLogger(__name__)
 
 # Инициализация менеджера таблиц
