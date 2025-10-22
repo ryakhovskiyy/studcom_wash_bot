@@ -1,6 +1,5 @@
 import time
 import logging
-from datetime import datetime
 
 from telegram import Update, ReplyKeyboardRemove, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import CallbackContext, ConversationHandler

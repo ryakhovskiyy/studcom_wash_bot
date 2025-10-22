@@ -3,18 +3,21 @@ from telegram import Update, ReplyKeyboardRemove, InlineKeyboardButton, InlineKe
 from telegram.ext import CallbackContext, ConversationHandler
 from telegram.constants import ParseMode
 from telegram.error import BadRequest
+import datetime
 
 from core.loader import sheet_manager
 from keyboards.reply import get_main_menu_keyboard
 from keyboards.inline import generate_filter_keyboard
+from utils.messages import NOT_OK_STATUS, get_text_after_booking_limit, MAIN_MENU_HIDDEN, CHOOSE_PARAMETERS, \
+    MAIN_MENU_MESSAGE, BOOKING_ERROR
 from utils.states import *
 
-# Импортируем наш новый сервис для управления напоминаниями
 from services.reminders import schedule_booking_reminders
 
 logger = logging.getLogger(__name__)
 
-
+ITEMS_PER_PAGE = 5
+SLOTS_PER_PAGE = 5
 # --- ЛОГИКА БРОНИРОВАНИЯ ---
 
 async def start_booking(update: Update, context: CallbackContext) -> int:
@@ -26,19 +29,18 @@ async def start_booking(update: Update, context: CallbackContext) -> int:
     user_dict = dict(zip(headers, user_data)) if user_data else {}
 
     if not user_data or user_dict.get('status') != 'ok':
-        await update.message.reply_text(
-            "Пожалуйста, заверши регистрацию, чтобы получить доступ к этой функции. Введи /start для перезапуска бота."
-        )
+        await update.message.reply_text(NOT_OK_STATUS, reply_markup=get_main_menu_keyboard(), parse_mode=ParseMode.HTML)
         return MAIN_MENU
 
-    if sheet_manager.get_user_bookings(user_id, upcoming_only=True):
-        await update.message.reply_text("У тебя уже есть активная запись.", reply_markup=get_main_menu_keyboard())
+    user_bookings = sheet_manager.get_user_bookings(user_id, upcoming_only=True)
+    LIMIT = sheet_manager.get_config().get('BOOKING_LIMIT')
+    if len(user_bookings) >= LIMIT:
+        await update.message.reply_text(get_text_after_booking_limit(LIMIT), reply_markup=get_main_menu_keyboard())
         return MAIN_MENU
 
     context.user_data['booking_filters'] = {'dates': [], 'floors': [], 'times': []}
-    await update.message.reply_text("Главное меню скрыто...", reply_markup=ReplyKeyboardRemove())
-    await update.message.reply_text("Выбери параметры для поиска слота:",
-                                    reply_markup=generate_filter_keyboard(context))
+    await update.message.reply_text(MAIN_MENU_HIDDEN, reply_markup=ReplyKeyboardRemove(), parse_mode=ParseMode.HTML)
+    await update.message.reply_text(CHOOSE_PARAMETERS, reply_markup=generate_filter_keyboard(context), parse_mode=ParseMode.HTML)
     return BOOKING_FILTER_SETUP
 
 
@@ -101,7 +103,6 @@ async def show_filter_options(update: Update, context: CallbackContext, category
         selected = filters.get('dates', [])
         prefix_any = "✅ " if not selected else ""
         keyboard.append([InlineKeyboardButton(f"{prefix_any}🗓️ Любая дата", callback_data="option_set_date:Любая")])
-        ITEMS_PER_PAGE = 5
         start_idx = page * ITEMS_PER_PAGE
         paginated_items = all_items[start_idx: start_idx + ITEMS_PER_PAGE]
         for item in paginated_items:
@@ -142,8 +143,7 @@ async def back_to_filters_handler(update: Update, context: CallbackContext) -> i
     """Возвращает пользователя в главное меню фильтров."""
     query = update.callback_query
     await query.answer()
-    await query.edit_message_text("Выбери параметры для поиска слота:",
-                                  reply_markup=generate_filter_keyboard(context))
+    await query.edit_message_text(CHOOSE_PARAMETERS, reply_markup=generate_filter_keyboard(context), parse_mode=ParseMode.HTML)
     return BOOKING_FILTER_SETUP
 
 
@@ -160,7 +160,6 @@ async def search_slots(update: Update, context: CallbackContext, page: int = 0) 
                                           [[InlineKeyboardButton("⬅️ Изменить фильтры", callback_data="filter_back")]]))
         return BOOKING_FILTER_SETUP
 
-    SLOTS_PER_PAGE = 5
     start_index = page * SLOTS_PER_PAGE
     end_index = start_index + SLOTS_PER_PAGE
     paginated_slots = available_slots[start_index:end_index]
@@ -235,21 +234,22 @@ async def confirm_booking(update: Update, context: CallbackContext) -> int:
             contact = sheet_manager.get_config().get(f'responsible_{responsible}_contact', 'не указан')
             key_room = sheet_manager.get_config().get(f'responsible_{responsible}_key_room', 'не указана')
             success_text = (f"🎉 <b>Слот успешно забронирован!</b>\n\n"
-                            f"Возьми ключ у ответственного в комнате <b>{key_room}</b>.\n\n"
+                            f"Перед стиркой нужно взять ключ от постирочной у ответственного в комнате <b>{key_room}</b>.\n\n"
                             f"<b>Твой ответственный:</b> {responsible}\n"
                             f"<b>Связь с ответственным:</b> {contact}\n")
             await query.edit_message_text(success_text, parse_mode=ParseMode.HTML)
 
             # Вызываем функцию для планирования всех напоминаний из нашего сервиса
-            schedule_booking_reminders(context, user.id, booking_result)
+            full_name = booking_result.get('full_name', 'Имя не найдено')
+            await schedule_booking_reminders(context, user.id, full_name, booking_result, sheet_manager)
 
         else:
             await query.edit_message_text("😔 <b>Упс!</b> Этот слот только что заняли.", parse_mode=ParseMode.HTML)
     except Exception as e:
         logger.error(f"Критическая ошибка при бронировании: {e}")
-        await query.edit_message_text("Произошла серьезная ошибка при бронировании. Пожалуйста, сообщи об этом.")
+        await query.edit_message_text(BOOKING_ERROR, parse_mode=ParseMode.HTML)
 
-    await query.message.reply_text("Ты в главном меню:", reply_markup=get_main_menu_keyboard())
+    await query.message.reply_text(MAIN_MENU_MESSAGE, reply_markup=get_main_menu_keyboard(), parse_mode=ParseMode.HTML)
     context.user_data.clear()
     context.user_data['in_main_menu'] = True
     return MAIN_MENU

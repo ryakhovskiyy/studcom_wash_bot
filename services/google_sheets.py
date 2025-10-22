@@ -282,7 +282,7 @@ class SheetManager:
             self.archive_sheet.append_row([archive_row.get(h, '') for h in self._archive_headers])
             self.schedule_sheet.delete_rows(target_row_index)
 
-            return {'archive_row_index': new_archive_row_index, **actual_slot_data}
+            return {'archive_row_index': new_archive_row_index, 'full_name': full_name, **actual_slot_data}
 
         except (gspread.exceptions.APIError, gspread.exceptions.CellNotFound, IndexError) as e:
             logger.error(
