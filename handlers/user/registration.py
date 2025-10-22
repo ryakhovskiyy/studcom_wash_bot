@@ -4,65 +4,75 @@ import re
 import time
 from datetime import datetime
 
-from telegram import Update, ReplyKeyboardMarkup, ReplyKeyboardRemove, InlineKeyboardButton, InlineKeyboardMarkup
-from telegram.ext import CallbackContext, ConversationHandler
+from telegram import Update, ReplyKeyboardRemove
+from telegram.ext import CallbackContext
 from telegram.constants import ParseMode
-from telegram.error import BadRequest
 
 from core.loader import sheet_manager
+from keyboards.inline import get_keyboard_summary, get_keyboard_email, get_keyboard_rules
 from services.email_service import send_verification_email
-from keyboards.reply import get_main_menu_keyboard
-from utils.states import * # Импортируем все состояния
+from keyboards.reply import get_main_menu_keyboard, get_start_begin_keyboard
+from utils.states import *
+from utils.messages import (ASK_NAME, ASK_PATRONYMIC, ASK_DOB, ASK_DOB_WRONG, ASK_ROOM,
+                            get_registration_summary, EMAIL_ASK, REREGESTRATION_MESSAGE,
+                            CHANGE_EMAIL, EMAIL_NOT_MSU, EMAIL_NOT_UNIQUE, EMAIL_NOT_FOUND, EMAIL_ATTEMPTS_3,
+                            EMAIL_ATTEMPTS_OFTEN, get_text_after_send_code, EMAIL_SEND_ERROR, EMAIL_CONFIRMED,
+                            RULES_CONFIRMATION, EMAIL_CODE_WRONG, RULES_CONFIRMED, MAIN_MENU_MESSAGE)
 
 logger = logging.getLogger(__name__)
 
 async def ask_surname(update: Update, context: CallbackContext) -> int:
     context.user_data['surname'] = update.message.text
-    await update.message.reply_text("Теперь введи свое имя с большой буквы (пример: Иван):")
+    await update.message.reply_text(ASK_NAME, reply_markup=get_start_begin_keyboard(), parse_mode=ParseMode.HTML)
     return AWAITING_NAME
 
 async def ask_name(update: Update, context: CallbackContext) -> int:
-    context.user_data['first_name'] = update.message.text
-    await update.message.reply_text(
-        "Введи свое отчество с большой буквы (пример: Иванович) (если нет, нажми 'Пропустить'):",
-        reply_markup=ReplyKeyboardMarkup([['Пропустить']], one_time_keyboard=True,
-                                         resize_keyboard=True))
+    text = update.message.text
+    if text == 'Начать заново':
+        context.user_data.clear()
+        await update.message.reply_text(REREGESTRATION_MESSAGE, reply_markup=ReplyKeyboardRemove(), parse_mode=ParseMode.HTML)
+        return AWAITING_SURNAME
+    context.user_data['first_name'] = text
+    await update.message.reply_text(ASK_PATRONYMIC, reply_markup=get_start_begin_keyboard(skip=True), parse_mode=ParseMode.HTML)
     return AWAITING_PATRONYMIC
 
 async def ask_patronymic(update: Update, context: CallbackContext) -> int:
     text = update.message.text
+    if text == 'Начать заново':
+        context.user_data.clear()
+        await update.message.reply_text(REREGESTRATION_MESSAGE, reply_markup=ReplyKeyboardRemove(),
+                                        parse_mode=ParseMode.HTML)
+        return AWAITING_SURNAME
     context.user_data['patronymic'] = '' if text == 'Пропустить' else text
-    await update.message.reply_text("Введи свою дату рождения в формате ДД.ММ.ГГГГ (пример: 31.01.2000):",
-                                    reply_markup=ReplyKeyboardRemove())
+    await update.message.reply_text(ASK_DOB, reply_markup=get_start_begin_keyboard(), parse_mode=ParseMode.HTML)
     return AWAITING_DOB
 
 async def ask_dob(update: Update, context: CallbackContext) -> int:
-    dob = update.message.text
+    text = update.message.text
+    if text == 'Начать заново':
+        context.user_data.clear()
+        await update.message.reply_text(REREGESTRATION_MESSAGE, reply_markup=ReplyKeyboardRemove(),
+                                        parse_mode=ParseMode.HTML)
+        return AWAITING_SURNAME
     try:
+        dob = text
         datetime.strptime(dob, '%d.%m.%Y')
         context.user_data['date_of_birth'] = dob
-        await update.message.reply_text("Введи номер своей комнаты (пример: А901):")
+        await update.message.reply_text(ASK_ROOM, reply_markup=get_start_begin_keyboard(), parse_mode=ParseMode.HTML)
         return AWAITING_ROOM
     except ValueError:
-        await update.message.reply_text(
-            "Неверный формат. Пожалуйста, введи дату в формате ДД.ММ.ГГГГ (пример: 31.01.2000):")
+        await update.message.reply_text(ASK_DOB_WRONG, reply_markup=get_start_begin_keyboard(), parse_mode=ParseMode.HTML)
         return AWAITING_DOB
 
 async def ask_room(update: Update, context: CallbackContext) -> int:
-    context.user_data['room_number'] = update.message.text
-    summary = (
-        "Пожалуйста, проверь введенные данные:\n\n"
-        f"<b>Фамилия:</b> {context.user_data['surname']}\n"
-        f"<b>Имя:</b> {context.user_data['first_name']}\n"
-        f"<b>Отчество:</b> {context.user_data.get('patronymic', 'Нет')}\n"
-        f"<b>Дата рождения:</b> {context.user_data['date_of_birth']}\n"
-        f"<b>Комната:</b> {context.user_data['room_number']}"
-    )
-    keyboard = [[
-        InlineKeyboardButton("✅ Подтвердить", callback_data='confirm_reg'),
-        InlineKeyboardButton("🔄 Ввести заново", callback_data='retry_reg')
-    ]]
-    await update.message.reply_text(summary, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode=ParseMode.HTML)
+    text = update.message.text
+    if text == 'Начать заново':
+        context.user_data.clear()
+        await update.message.reply_text(REREGESTRATION_MESSAGE, reply_markup=ReplyKeyboardRemove(),
+                                        parse_mode=ParseMode.HTML)
+        return AWAITING_SURNAME
+    context.user_data['room_number'] = text
+    await update.message.reply_text(get_registration_summary(context.user_data), reply_markup=get_keyboard_summary(), parse_mode=ParseMode.HTML)
     return AWAITING_REG_CONFIRMATION
 
 async def registration_confirmation(update: Update, context: CallbackContext) -> int:
@@ -76,23 +86,18 @@ async def registration_confirmation(update: Update, context: CallbackContext) ->
         user_info['username'] = user.username if user.username else ""
         sheet_manager.add_user(user_info)
 
-        await query.edit_message_text(
-            "Данные сохранены. Теперь необходимо подтвердить твою почту. "
-            "Введи свой университетский email, который оканчивается на @math.msu.ru"
-        )
+        await query.edit_message_text(EMAIL_ASK, parse_mode=ParseMode.HTML)
         return AWAITING_EMAIL
     else:
         context.user_data.clear()
-        await query.edit_message_text("Давай начнем сначала. Введи свою фамилию с большой буквы (пример: Иванов):")
+        await query.edit_message_text(REREGESTRATION_MESSAGE, parse_mode=ParseMode.HTML)
         return AWAITING_SURNAME
 
 async def prompt_change_email(update: Update, context: CallbackContext) -> int:
     """Обрабатывает кнопку 'Ввести другую почту'."""
     query = update.callback_query
     await query.answer()
-    await query.edit_message_text(
-        "Пожалуйста, введи новый email-адрес, который оканчивается на @math.msu.ru"
-    )
+    await query.edit_message_text(CHANGE_EMAIL, parse_mode=ParseMode.HTML)
     return AWAITING_EMAIL
 
 async def ask_email_and_send_code(update: Update, context: CallbackContext, initial: bool = True):
@@ -102,39 +107,33 @@ async def ask_email_and_send_code(update: Update, context: CallbackContext, init
     if initial:
         email = update.message.text
         if not re.match(r"[^@]+@math\.msu\.ru$", email):
-            await update.message.reply_text(
-                "Неверный формат почты. Она должна оканчиваться на @math.msu.ru. Попробуй еще раз.")
+            await update.message.reply_text(EMAIL_NOT_MSU, reply_markup=ReplyKeyboardRemove(), parse_mode=ParseMode.HTML)
             return AWAITING_EMAIL
 
         user_id = update.effective_user.id
         if sheet_manager.is_email_registered(email, user_id):
-            await update.message.reply_text("Этот email уже используется другим аккаунтом. Пожалуйста, введи другой.")
+            await update.message.reply_text(EMAIL_NOT_UNIQUE, reply_markup=ReplyKeyboardRemove(), parse_mode=ParseMode.HTML)
             return AWAITING_EMAIL
 
         context.user_data['email'] = email
+        sheet_manager.update_user(user_id, 'email', email)
     else:
         email = context.user_data.get('email')
         if not email:
-            await message_source.reply_text("Произошла ошибка, email не найден. Пожалуйста, введи /start.",
-                                            reply_markup=ReplyKeyboardRemove())
-            return ConversationHandler.END
+            await message_source.reply_text(EMAIL_NOT_FOUND, reply_markup=ReplyKeyboardRemove(), parse_mode=ParseMode.HTML)
+            return AWAITING_EMAIL
 
     now = time.time()
     context.user_data.setdefault('email_attempts', [])
     context.user_data['email_attempts'] = [t for t in context.user_data['email_attempts'] if now - t < 1800]
 
-    keyboard = [
-        [InlineKeyboardButton("🔄 Отправить код еще раз", callback_data="resend_code")],
-        [InlineKeyboardButton("✍️ Ввести другую почту", callback_data="change_email")]
-    ]
-    reply_markup = InlineKeyboardMarkup(keyboard)
 
-    if len(context.user_data['email_attempts']) >= 2:
-        await message_source.reply_text("Ты слишком часто запрашиваешь код. Пожалуйста, подожди 30 минут.", reply_markup=reply_markup)
+    if len(context.user_data['email_attempts']) >= 3:
+        await message_source.reply_text(EMAIL_ATTEMPTS_3, reply_markup=get_keyboard_email(), parse_mode=ParseMode.HTML)
         return AWAITING_EMAIL_CODE
 
     if context.user_data['email_attempts'] and (now - context.user_data['email_attempts'][-1] < 60):
-        await message_source.reply_text("Отправлять код можно не чаще раза в минуту. Подожди немного.", reply_markup=reply_markup)
+        await message_source.reply_text(EMAIL_ATTEMPTS_OFTEN, reply_markup=get_keyboard_email(), parse_mode=ParseMode.HTML)
         return AWAITING_EMAIL_CODE
 
     code = str(random.randint(100000, 999999))
@@ -142,31 +141,25 @@ async def ask_email_and_send_code(update: Update, context: CallbackContext, init
 
     if send_verification_email(email, code):
         context.user_data['email_attempts'].append(now)
-        message_text = f"На почту {email} отправлен 6-значный код. Введи его для подтверждения."
+        sheet_manager.update_user(update.effective_user.id, 'email_status', 'Send')
 
         if update.callback_query:
-            await update.callback_query.edit_message_text(message_text, reply_markup=reply_markup)
+            await update.callback_query.answer("Новый код отправлен!", show_alert=False)
+            await update.callback_query.edit_message_text(get_text_after_send_code(email), reply_markup=get_keyboard_email(), parse_mode=ParseMode.HTML)
         else:
-            await update.message.reply_text(message_text, reply_markup=reply_markup)
+            await update.message.reply_text(get_text_after_send_code(email), reply_markup=get_keyboard_email(), parse_mode=ParseMode.HTML)
         return AWAITING_EMAIL_CODE
     else:
-        await message_source.reply_text("Не удалось отправить письмо. Обратись в сообщения группы Студкома мехмата: vk.com/studcom_mm", reply_markup=reply_markup)
+        await message_source.reply_text(EMAIL_SEND_ERROR, reply_markup=get_keyboard_email(), parse_mode=ParseMode.HTML)
         return AWAITING_EMAIL_CODE
 
 async def resend_code(update: Update, context: CallbackContext) -> int:
     """Обрабатывает нажатие кнопки 'Отправить код еще раз'."""
-    query = update.callback_query
-    await query.answer("Новый код отправлен!", show_alert=False)
     return await ask_email_and_send_code(update, context, initial=False)
 
 async def email_verification(update: Update, context: CallbackContext) -> int:
     user_code = update.message.text
     if user_code == context.user_data.get('verification_code'):
-        try:
-            await update.message.delete()
-        except BadRequest:
-            pass
-
         user_id = update.effective_user.id
         email = context.user_data['email']
         sheet_manager.update_user_field(user_id, 'email', email)
@@ -175,8 +168,7 @@ async def email_verification(update: Update, context: CallbackContext) -> int:
         memo_image_path = "media/memo.jpg"
         rules_path = "documents/rules.pdf"
 
-        await update.message.reply_text(
-            f"Почта успешно подтверждена!\n\nТеперь необходимо ознакомиться с правилами использования стиральных машин:")
+        await update.message.reply_text(EMAIL_CONFIRMED, reply_markup=ReplyKeyboardRemove(), parse_mode=ParseMode.HTML)
 
         with open(memo_image_path, 'rb') as memo_image_file, open(rules_path, 'rb') as rules_file:
             await update.message.reply_photo(
@@ -189,12 +181,10 @@ async def email_verification(update: Update, context: CallbackContext) -> int:
                 caption='Правила ⬆️'
             )
 
-        keyboard = [[InlineKeyboardButton("✅ Я ознакомился и принимаю правила", callback_data='rules_accepted')]]
-        await update.message.reply_text("Пожалуйста, внимательно прочти гайд и правила, а после подтверди ознакомление:",
-                                        reply_markup=InlineKeyboardMarkup(keyboard), parse_mode=ParseMode.HTML)
+        await update.message.reply_text(RULES_CONFIRMATION, reply_markup=get_keyboard_rules(), parse_mode=ParseMode.HTML)
         return AWAITING_RULES_ACK
     else:
-        await update.message.reply_text("Неверный код. Попробуй еще раз.")
+        await update.message.reply_text(EMAIL_CODE_WRONG, reply_markup=get_keyboard_email(), parse_mode=ParseMode.HTML)
         return AWAITING_EMAIL_CODE
 
 async def rules_ack(update: Update, context: CallbackContext) -> int:
@@ -206,8 +196,13 @@ async def rules_ack(update: Update, context: CallbackContext) -> int:
         sheet_manager.update_user_field(update.effective_user.id, 'rules_acknowledged', 'TRUE')
         sheet_manager.update_user_field(user_id, 'status', 'ok')
 
-        await query.edit_message_text("Отлично! Регистрация завершена.")
-        await query.message.reply_text("Ты в главном меню:", reply_markup=get_main_menu_keyboard())
+        await query.edit_message_text(RULES_CONFIRMED, reply_markup=None, parse_mode=ParseMode.HTML)
+        await context.bot.send_message(
+            chat_id=update.effective_chat.id,
+            text=MAIN_MENU_MESSAGE,
+            reply_markup=get_main_menu_keyboard(),
+            parse_mode=ParseMode.HTML
+        )
         context.user_data.clear()
         context.user_data['in_main_menu'] = True
         return MAIN_MENU

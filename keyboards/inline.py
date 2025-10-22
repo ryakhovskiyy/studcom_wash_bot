@@ -15,3 +15,21 @@ def generate_filter_keyboard(context) -> InlineKeyboardMarkup:
         [InlineKeyboardButton("🏠 В главное меню", callback_data='filter_tomenu')]
     ]
     return InlineKeyboardMarkup(keyboard)
+
+def get_keyboard_summary() -> InlineKeyboardMarkup:
+    keyboard = [[
+        InlineKeyboardButton("✅ Подтвердить", callback_data='confirm_reg'),
+        InlineKeyboardButton("🔄 Ввести заново", callback_data='retry_reg')
+    ]]
+    return InlineKeyboardMarkup(keyboard)
+
+def get_keyboard_email() -> InlineKeyboardMarkup:
+    keyboard = [
+        [InlineKeyboardButton("🔄 Отправить код еще раз", callback_data="resend_code")],
+        [InlineKeyboardButton("✍️ Ввести другую почту", callback_data="change_email")]
+    ]
+    return InlineKeyboardMarkup(keyboard)
+
+def get_keyboard_rules() -> InlineKeyboardMarkup:
+    keyboard = [[InlineKeyboardButton("✅ Я ознакомился и принимаю правила", callback_data='rules_accepted')]]
+    return InlineKeyboardMarkup(keyboard)
