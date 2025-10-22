@@ -30,11 +30,13 @@ async def _send_monitor_reminder(context: CallbackContext):
     slot_text = job.data['slot_text']
     full_name = job.data['full_name']
     user_id = job.data['user_id']
+    paper_sign = job.data['paper_sign']
 
     message = (
         f"🔔 <b>Напоминание о записи</b> 🔔\n\n"
         f"Через 10 минут у студента {full_name} {f"(@{user_id})" if user_id else ''} стирка:\n"
-        f"<b>{slot_text}</b>"
+        f"<b>{slot_text}</b>\n\n"
+        f"Студент {'' if paper_sign == '1' else "<b>НЕ</b>"} расписался в журнале."
     )
     await context.bot.send_message(chat_id=job.chat_id, text=message, parse_mode=ParseMode.HTML)
     logger.info(f"Отправлено напоминание старосте {job.chat_id}")
@@ -52,7 +54,7 @@ async def schedule_booking_reminders(context: CallbackContext, user_id: int, ful
 
     archive_row_index = booking_result['archive_row_index']
     slot_dt_str = f"{booking_result['slot_date']} {booking_result['start_time']}"
-    slot_text = f"{booking_result['slot_date']} в {booking_result['start_time']} (Этаж {booking_result['floor']})"
+    slot_text = f"{booking_result['slot_date']} с {booking_result['start_time']} до {booking_result['end_time']} (Этаж {booking_result['floor']})"
 
     try:
         moscow_tz = pytz.timezone('Europe/Moscow')
@@ -105,10 +107,12 @@ async def schedule_booking_reminders(context: CallbackContext, user_id: int, ful
         # Если нашли ID старосты - отправляем и планируем
         if monitor_id:
             # Отправляем НЕМЕДЛЕННОЕ уведомление о новой брони
+            paper_sign = sheet_manager.get_user(user_id).get('paper_sign')
             message_text = (
                 f"🔔 <b>Новая запись!</b> 🔔\n\n"
                 f"Студент <b>{full_name}</b> (ID: {user_id}) забронировал у вас слот:\n\n"
-                f"<b>{slot_text}</b>"
+                f"<b>{slot_text}</b>\n\n"
+                f"Студент {'' if paper_sign == '1' else "<b>НЕ</b>"} расписался в журнале."
             )
             try:
                 await context.bot.send_message(chat_id=monitor_id, text=message_text, parse_mode=ParseMode.HTML)
@@ -120,7 +124,7 @@ async def schedule_booking_reminders(context: CallbackContext, user_id: int, ful
             reminder_time_10min = aware_dt - timedelta(minutes=10)
             if reminder_time_10min > now_aware:
                 job_name = f"monitor_reminder_{archive_row_index}_10min"
-                job_data = {'slot_text': slot_text, 'full_name': full_name, 'user_id': user_id}
+                job_data = {'slot_text': slot_text, 'full_name': full_name, 'user_id': user_id, 'paper_sign': paper_sign}
 
                 context.job_queue.run_once(
                     _send_monitor_reminder,

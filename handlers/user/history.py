@@ -104,7 +104,7 @@ async def show_booking_history(update: Update, context: CallbackContext) -> int:
     for booking in bookings:
         status_icon = "✅" if booking.get('status') == 'Booked' else \
             ("❌" if booking.get('status') == 'Canceled' else "🕒")
-        text += (f"{status_icon} {booking['slot_date']} в {booking['start_time']} "
+        text += (f"{status_icon} {booking['slot_date']} c {booking['start_time']} до {booking['end_time']} "
                  f"(Этаж {booking['floor']}) - Статус: {booking.get('status', 'N/A')}\n")
 
     await update.message.reply_text(text, parse_mode=ParseMode.HTML, reply_markup=get_main_menu_keyboard())

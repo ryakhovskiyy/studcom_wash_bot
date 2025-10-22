@@ -3,7 +3,6 @@ from telegram import Update, ReplyKeyboardRemove, InlineKeyboardButton, InlineKe
 from telegram.ext import CallbackContext, ConversationHandler
 from telegram.constants import ParseMode
 from telegram.error import BadRequest
-import datetime
 
 from core.loader import sheet_manager
 from keyboards.reply import get_main_menu_keyboard
@@ -166,7 +165,7 @@ async def search_slots(update: Update, context: CallbackContext, page: int = 0) 
     keyboard = []
     text = "Найденные свободные слоты:"
     for slot in paginated_slots:
-        slot_text = f"{slot['slot_date'][:-5]} в {slot['start_time']} (Этаж {slot['floor']})"
+        slot_text = f"{slot['slot_date'][:-5]} с {slot['start_time']} до {slot['end_time']} (Этаж {slot['floor']})"
         keyboard.append([InlineKeyboardButton(slot_text, callback_data=f"slot_{slot['row_index']}")])
     nav = []
     if page > 0: nav.append(InlineKeyboardButton("◀️ Пред. страница", callback_data=f"page_{page - 1}"))
@@ -200,7 +199,7 @@ async def select_slot(update: Update, context: CallbackContext) -> int:
         confirm_text = (
             "Подтверди бронирование:\n\n"
             f"<b>Дата:</b> {slot_data['slot_date']}\n"
-            f"<b>Время:</b> {slot_data['start_time']}\n"
+            f"<b>Время:</b> {slot_data['start_time']} - {slot_data['end_time']}\n"
             f"<b>Этаж:</b> {slot_data['floor']}"
         )
         keyboard = [[
