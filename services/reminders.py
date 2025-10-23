@@ -14,8 +14,8 @@ async def _send_reminder(context: CallbackContext):
 
     message = (
         f"❗️ <b>Напоминание о записи</b> ❗️\n\n"
-        f"Через {job_data['minutes_before']} минут у тебя стирка:\n"
-        f"<b>{job_data['slot_text']}</b>"
+        f"Через {job_data['minutes_before']} минут у тебя стирка:\n\n"
+        f"<b>{job_data['slot_text']}\n\n</b>"
         f"Перед стиркой нужно взять ключ от постирочной у ответственного в комнате <b>{job_data['key_room']}</b>.\n\n"
         f"<b>Твой ответственный:</b> {job_data['responsible']}\n"
         f"<b>Связь с ответственным:</b> {job_data['contact']}"
@@ -30,19 +30,22 @@ async def _send_monitor_reminder(context: CallbackContext):
     slot_text = job.data['slot_text']
     full_name = job.data['full_name']
     user_id = job.data['user_id']
-    paper_sign = job.data['paper_sign']
+    username = job.data.get('username')
+    paper_sign = job.data.get('paper_sign')
+
+    user_mention = f"(@{username})" if username else f"(PEER_ID: {user_id})"
 
     message = (
         f"🔔 <b>Напоминание о записи</b> 🔔\n\n"
-        f"Через 10 минут у студента {full_name} {f"(@{user_id})" if user_id else ''} стирка:\n"
+        f"Через 10 минут у студента {full_name} {user_mention} стирка:\n\n"
         f"<b>{slot_text}</b>\n\n"
-        f"Студент {'' if paper_sign == '1' else "<b>НЕ</b>"} расписался в журнале."
+        f"Студент {'' if paper_sign == '1' else "<b>НЕ</b> "}расписался в журнале."
     )
     await context.bot.send_message(chat_id=job.chat_id, text=message, parse_mode=ParseMode.HTML)
     logger.info(f"Отправлено напоминание старосте {job.chat_id}")
 
 
-async def schedule_booking_reminders(context: CallbackContext, user_id: int, full_name: str,
+async def schedule_booking_reminders(context: CallbackContext, user_id: int, username: str | None, full_name: str,
         booking_result: dict, sheet_manager: SheetManager):
     """
     Планирует напоминания для пользователя
@@ -107,12 +110,20 @@ async def schedule_booking_reminders(context: CallbackContext, user_id: int, ful
         # Если нашли ID старосты - отправляем и планируем
         if monitor_id:
             # Отправляем НЕМЕДЛЕННОЕ уведомление о новой брони
-            paper_sign = sheet_manager.get_user(user_id).get('paper_sign')
+            paper_sign = None
+            user_row = sheet_manager.get_user(user_id)
+            if user_row:
+                user_headers = sheet_manager.get_users_headers()
+                user_dict = dict(zip(user_headers, user_row))
+                paper_sign = user_dict.get('paper_sign')
+
+            user_mention = f"(@{username})" if username else f"(ID: {user_id})"
+
             message_text = (
                 f"🔔 <b>Новая запись!</b> 🔔\n\n"
-                f"Студент <b>{full_name}</b> (ID: {user_id}) забронировал у вас слот:\n\n"
+                f"Студент <b>{full_name}</b> {user_mention} забронировал у вас слот:\n\n"
                 f"<b>{slot_text}</b>\n\n"
-                f"Студент {'' if paper_sign == '1' else "<b>НЕ</b>"} расписался в журнале."
+                f"Студент {'' if paper_sign == '1' else "<b>НЕ</b> "}расписался в журнале."
             )
             try:
                 await context.bot.send_message(chat_id=monitor_id, text=message_text, parse_mode=ParseMode.HTML)
@@ -120,11 +131,11 @@ async def schedule_booking_reminders(context: CallbackContext, user_id: int, ful
             except Exception as e:
                 logger.error(f"Не удалось отправить немедленное уведомление старосте {monitor_id}: {e}")
 
-            # Планируем 10-минутное НАПОМИНАНИЕ для старосты
+            # Планируем 10-минутное напоминание для старосты
             reminder_time_10min = aware_dt - timedelta(minutes=10)
             if reminder_time_10min > now_aware:
                 job_name = f"monitor_reminder_{archive_row_index}_10min"
-                job_data = {'slot_text': slot_text, 'full_name': full_name, 'user_id': user_id, 'paper_sign': paper_sign}
+                job_data = {'slot_text': slot_text, 'full_name': full_name, 'user_id': user_id, 'username': username, 'paper_sign': paper_sign}
 
                 context.job_queue.run_once(
                     _send_monitor_reminder,
@@ -139,7 +150,7 @@ async def schedule_booking_reminders(context: CallbackContext, user_id: int, ful
         logger.error(f"Ошибка при планировании напоминания для записи {archive_row_index}: {e}")
 
 def remove_reminders(context: CallbackContext, archive_row_index: int):
-    """(ОБНОВЛЕН) Удаляет напоминания для пользователя И старосты."""
+    """Удаляет напоминания для пользователя и старосты."""
     if not context.job_queue:
         return
 

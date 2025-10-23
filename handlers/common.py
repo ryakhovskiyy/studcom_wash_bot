@@ -2,7 +2,7 @@ from telegram import Update, ReplyKeyboardRemove
 from telegram.ext import CallbackContext, ConversationHandler
 from telegram.constants import ParseMode
 
-from bot_commands import COMMANDS_INFO, HELP_MESSAGE
+from .bot_commands import COMMANDS_INFO, HELP_MESSAGE
 from core.loader import sheet_manager
 from utils.decorators import block_check
 from utils.messages import WELCOME_BACK, WELCOME_MESSAGE, ASK_SURNAME, EMAIL_PENDING, MAIN_MENU_USER_CHATING, \

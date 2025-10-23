@@ -44,10 +44,10 @@ class SheetManager:
 
     def get_user(self, telegram_id: int):
         """Получаем данные о пользователе по его telegram_id."""
-        try:
-            cell = self.users_sheet.find(str(telegram_id), in_column=1)
+        cell = self.users_sheet.find(str(telegram_id), in_column=1)
+        if cell:
             return self.users_sheet.row_values(cell.row)
-        except gspread.CellNotFound:
+        else:
             return None
 
     def add_user(self, user_data: dict):
@@ -269,7 +269,7 @@ class SheetManager:
 
             actual_slot_data = dict(zip(self._schedule_headers, actual_slot_data_row))
 
-            if actual_slot_data.get('slot_date')!= slot_data.get('slot_date') or \
+            if actual_slot_data.get('slot_date') != slot_data.get('slot_date') or \
                     actual_slot_data.get('start_time') != slot_data.get('start_time') or \
                     actual_slot_data.get('floor') != slot_data.get('floor'):
                 logger.warning(

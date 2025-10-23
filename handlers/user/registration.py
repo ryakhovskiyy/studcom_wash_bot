@@ -116,7 +116,7 @@ async def ask_email_and_send_code(update: Update, context: CallbackContext, init
             return AWAITING_EMAIL
 
         context.user_data['email'] = email
-        sheet_manager.update_user(user_id, 'email', email)
+        sheet_manager.update_user_field(user_id, 'email', email)
     else:
         email = context.user_data.get('email')
         if not email:
@@ -141,7 +141,7 @@ async def ask_email_and_send_code(update: Update, context: CallbackContext, init
 
     if send_verification_email(email, code):
         context.user_data['email_attempts'].append(now)
-        sheet_manager.update_user(update.effective_user.id, 'email_status', 'Send')
+        sheet_manager.update_user_field(update.effective_user.id, 'email_status', 'Send')
 
         if update.callback_query:
             await update.callback_query.answer("Новый код отправлен!", show_alert=False)

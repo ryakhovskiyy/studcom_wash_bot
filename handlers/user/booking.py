@@ -223,9 +223,19 @@ async def confirm_booking(update: Update, context: CallbackContext) -> int:
     await query.answer("Бронирую...", show_alert=False)
     row_index = int(query.data.split('_')[-1])
     user = update.effective_user
+
     try:
+        slot_row_list = sheet_manager.schedule_sheet.row_values(row_index)
+        headers = sheet_manager.get_schedule_headers()
+        slot_dict = dict(zip(headers, slot_row_list))
+
         booking_result = sheet_manager.book_slot(
-            slot_data={'row_index': row_index},
+            slot_data={'row_index': row_index,
+                       'slot_date': slot_dict.get('slot_date'),
+                       'start_time': slot_dict.get('start_time'),
+                       'end_time': slot_dict.get('end_time'),
+                       'floor': slot_dict.get('floor'),
+                       'responsible': slot_dict.get('responsible')},
             user_info={'id': user.id, 'username': user.username or ""}
         )
         if booking_result:
@@ -240,7 +250,7 @@ async def confirm_booking(update: Update, context: CallbackContext) -> int:
 
             # Вызываем функцию для планирования всех напоминаний из нашего сервиса
             full_name = booking_result.get('full_name', 'Имя не найдено')
-            await schedule_booking_reminders(context, user.id, full_name, booking_result, sheet_manager)
+            await schedule_booking_reminders(context, user.id, user.username, full_name, booking_result, sheet_manager)
 
         else:
             await query.edit_message_text("😔 <b>Упс!</b> Этот слот только что заняли.", parse_mode=ParseMode.HTML)

@@ -2,6 +2,7 @@ import logging
 
 from telegram import BotCommand
 from telegram.ext import (
+    Application,
     ConversationHandler,
     CommandHandler,
     MessageHandler,
@@ -21,7 +22,7 @@ from utils.states import *
 
 
 # Команды бота для меню
-async def set_bot_commands():
+async def set_bot_commands(application: Application):
     """Устанавливает команды, видимые в меню Telegram."""
     commands = [
         BotCommand("start", "Перезапустить бота / Главное меню"),
