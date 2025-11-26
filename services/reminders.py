@@ -39,7 +39,7 @@ async def _send_monitor_reminder(context: CallbackContext):
         f"🔔 <b>Напоминание о записи</b> 🔔\n\n"
         f"Через 10 минут у студента {full_name} {user_mention} стирка:\n\n"
         f"<b>{slot_text}</b>\n\n"
-        f"Студент {'' if paper_sign == '1' else "<b>НЕ</b> "}расписался в журнале."
+        f"Студент {'' if paper_sign == '1' else '<b>НЕ</b> '}расписался в журнале."
     )
     await context.bot.send_message(chat_id=job.chat_id, text=message, parse_mode=ParseMode.HTML)
     logger.info(f"Отправлено напоминание старосте {job.chat_id}")
@@ -123,7 +123,7 @@ async def schedule_booking_reminders(context: CallbackContext, user_id: int, use
                 f"🔔 <b>Новая запись!</b> 🔔\n\n"
                 f"Студент <b>{full_name}</b> {user_mention} забронировал у вас слот:\n\n"
                 f"<b>{slot_text}</b>\n\n"
-                f"Студент {'' if paper_sign == '1' else "<b>НЕ</b> "}расписался в журнале."
+                f"Студент {'' if paper_sign == '1' else '<b>НЕ</b> '}расписался в журнале."
             )
             try:
                 await context.bot.send_message(chat_id=monitor_id, text=message_text, parse_mode=ParseMode.HTML)
